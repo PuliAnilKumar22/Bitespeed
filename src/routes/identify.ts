@@ -53,17 +53,68 @@ router.delete("/", async (req, res) => {
 
 router.post("/", async (req, res) => {
   try {
-
     const { email, phoneNumber } = req.body;
 
     const primaryContatctIds = await prisma.contact.findMany({
-      distinct: ["primaryId"], 
+      distinct: ["primaryId"],
       select: {
         primaryId: true,
       },
       where: {
         OR: [{ email: email }, { phoneNumber: phoneNumber }],
         deletedAt: null,
+      },
+    });
+
+    if (primaryContatctIds.length === 0) {
+      const newContact = await prisma.contact.create({
+        data: {
+          email,
+          phoneNumber,
+          linkPrecedence: "primary",
+        },
+      });
+
+      const updatedContact = await prisma.contact.update({
+        where: { id: newContact.id },
+        data: {
+          primaryId: newContact.id,
+        },
+      });
+    } else if (primaryContatctIds.length === 1) {
+      const linkedContact = await prisma.contact.findFirst({
+        where: {
+          OR: [{ email: email }, { phoneNumber: phoneNumber }],
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      const newContact = await prisma.contact.create({
+        data: {
+          email,
+          phoneNumber,
+          linkPrecedence: "secondary",
+          linkedId: linkedContact.id,
+          primaryId: linkedContact.primaryId,
+        },
+      });
+    }
+
+    const updateontact = await prisma.contact.update({
+      where: { id: primaryContatctIds[1].primaryId },
+      data: {
+        linkPrecedence: "secondary",
+        linkedId: primaryContatctIds[0].primaryId,
+        primaryId: primaryContatctIds[0].primaryId,
+      },
+    });
+
+    const updateAllontacts = await prisma.contact.updateMany({
+      where: { primaryId: primaryContatctIds[1].primaryId },
+      data: {
+        primaryId: primaryContatctIds[0].primaryId,
       },
     });
 
@@ -82,8 +133,8 @@ router.post("/", async (req, res) => {
     return res.json({
       contact: {
         primaryContatctId: primaryContact.id,
-        emails: [...new Set(contacts.map((c: Contact) => c.email))], 
-        phoneNumbers: [...new Set(contacts.map((c: Contact) => c.phoneNumber))], 
+        emails: [...new Set(contacts.map((c: Contact) => c.email))],
+        phoneNumbers: [...new Set(contacts.map((c: Contact) => c.phoneNumber))],
         secondaryContactIds: [
           ...new Set(secondaryContacts.map((c: Contact) => c.id)),
         ],
