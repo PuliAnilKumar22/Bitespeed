@@ -35,4 +35,20 @@ router.get("/", async (req, res) => {
   }
 });
 
+// DELETE endpoint to delete all contacts
+router.delete("/", async (req, res) => {
+  try {
+    // Soft delete all contacts
+    await prisma.contact.updateMany({
+      where: { deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+
+    return res.json({ message: "All contacts deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting all contacts:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export { router as identifyRouter };
