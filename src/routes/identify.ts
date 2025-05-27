@@ -56,7 +56,7 @@ router.post("/", async (req, res) => {
     const { email, phoneNumber } = req.body;
 
     const primaryContatctIds = await prisma.contact.findMany({
-      distinct: ["primaryId"],
+      distinct: ["primaryId"], 
       select: {
         primaryId: true,
       },
@@ -66,7 +66,12 @@ router.post("/", async (req, res) => {
       },
     });
 
-    if (primaryContatctIds.length === 0) {
+    if (email == null || phoneNumber === null) {
+      return res
+        .status(400)
+        .json({ error: "Either email or phoneNumber must be provided" });
+
+    } else if (primaryContatctIds.length === 0) {
       const newContact = await prisma.contact.create({
         data: {
           email,
@@ -81,7 +86,11 @@ router.post("/", async (req, res) => {
           primaryId: newContact.id,
         },
       });
+
+      primaryContatctIds.push({ primaryId: newContact.id });
+
     } else if (primaryContatctIds.length === 1) {
+
       const linkedContact = await prisma.contact.findFirst({
         where: {
           OR: [{ email: email }, { phoneNumber: phoneNumber }],
@@ -91,32 +100,43 @@ router.post("/", async (req, res) => {
         },
       });
 
-      const newContact = await prisma.contact.create({
+      const ifEmailAlreadyExists = await prisma.contact.findFirst({
+        where: { email: email },
+      });
+
+      const ifPhoneNumberAlreadyExists = await prisma.contact.findFirst({
+        where:  { phoneNumber: phoneNumber },
+      });
+
+      if (ifEmailAlreadyExists == null || ifPhoneNumberAlreadyExists == null) {
+        const newContact = await prisma.contact.create({
+          data: {
+            email,
+            phoneNumber,
+            linkPrecedence: "secondary",
+            linkedId: linkedContact.id,
+            primaryId: linkedContact.primaryId,
+          },
+        });
+      }
+    } else {
+
+        const updateontact = await prisma.contact.update({
+        where: { id: primaryContatctIds[1].primaryId },
         data: {
-          email,
-          phoneNumber,
           linkPrecedence: "secondary",
-          linkedId: linkedContact.id,
-          primaryId: linkedContact.primaryId,
+          linkedId: primaryContatctIds[0].primaryId,
+          primaryId: primaryContatctIds[0].primaryId,
+        },
+      });
+
+      const updateAllontacts = await prisma.contact.updateMany({
+        where: { primaryId: primaryContatctIds[1].primaryId },
+        data: {
+          primaryId: primaryContatctIds[0].primaryId,
         },
       });
     }
-
-    const updateontact = await prisma.contact.update({
-      where: { id: primaryContatctIds[1].primaryId },
-      data: {
-        linkPrecedence: "secondary",
-        linkedId: primaryContatctIds[0].primaryId,
-        primaryId: primaryContatctIds[0].primaryId,
-      },
-    });
-
-    const updateAllontacts = await prisma.contact.updateMany({
-      where: { primaryId: primaryContatctIds[1].primaryId },
-      data: {
-        primaryId: primaryContatctIds[0].primaryId,
-      },
-    });
 
     const contacts = await prisma.contact.findMany({
       where: {
@@ -133,7 +153,7 @@ router.post("/", async (req, res) => {
     return res.json({
       contact: {
         primaryContatctId: primaryContact.id,
-        emails: [...new Set(contacts.map((c: Contact) => c.email))],
+        emails: [...new Set(contacts.map((c: Contact) => c.email))], 
         phoneNumbers: [...new Set(contacts.map((c: Contact) => c.phoneNumber))],
         secondaryContactIds: [
           ...new Set(secondaryContacts.map((c: Contact) => c.id)),
