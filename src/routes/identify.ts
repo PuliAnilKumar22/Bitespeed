@@ -51,4 +51,47 @@ router.delete("/", async (req, res) => {
   }
 });
 
+router.post("/", async (req, res) => {
+  try {
+
+    const { email, phoneNumber } = req.body;
+
+    const primaryContatctIds = await prisma.contact.findMany({
+      distinct: ["primaryId"], 
+      select: {
+        primaryId: true,
+      },
+      where: {
+        OR: [{ email: email }, { phoneNumber: phoneNumber }],
+        deletedAt: null,
+      },
+    });
+
+    const contacts = await prisma.contact.findMany({
+      where: {
+        primaryId: primaryContatctIds[0].primaryId,
+      },
+      orderBy: {
+        createdAt: "asc",
+      },
+    });
+
+    const primaryContact = contacts[0];
+    const secondaryContacts = contacts.slice(1);
+
+    return res.json({
+      contact: {
+        primaryContatctId: primaryContact.id,
+        emails: [...new Set(contacts.map((c: Contact) => c.email))], 
+        phoneNumbers: [...new Set(contacts.map((c: Contact) => c.phoneNumber))], 
+        secondaryContactIds: [
+          ...new Set(secondaryContacts.map((c: Contact) => c.id)),
+        ],
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export { router as identifyRouter };
